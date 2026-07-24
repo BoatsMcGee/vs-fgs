@@ -3,7 +3,7 @@ requires = ["meson-python", "ninja", "meson"]
 build-backend = "mesonpy"
 
 [project]
-name = "vs-fgs"
+name = "vsfgs"
 version = "0.3.0"
 description = "VapourSynth Film Grain Synthesis Plugin using dav1d"
 authors = [

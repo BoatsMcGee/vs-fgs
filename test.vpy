@@ -1,5 +1,5 @@
 import vapoursynth as vs
-import vs_fgs
+import vsfgs
 from vsview import set_output
 from vssource import FFMS2
 from vsdenoise import bm3d
@@ -13,7 +13,7 @@ clip = core.resize.Bicubic(clip, format=vs.YUV420P16)
 
 clip_d = bm3d(depth(clip, 32), sigma=3, backend=bm3d.Backend.CUDA_RTC)
 
-clip_fgs = vs_fgs.apply_fgs(depth(clip_d, 10), "dynamic_fgs_test.txt")
+clip_fgs = vsfgs.apply_fgs(depth(clip_d, 10), "dynamic_fgs_test.txt")
 
 set_output(clip)
 set_output(clip_d)

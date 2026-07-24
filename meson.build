@@ -1,4 +1,4 @@
-project('vs-fgs', ['c', 'cpp'],
+project('vsfgs', ['c', 'cpp'],
   version: '0.3.0',
   default_options: ['cpp_std=c++17', 'c_std=c99', 'buildtype=release']
 )
@@ -15,7 +15,7 @@ vs_fgs_sources = [
   'src/vs_fgs.cpp'
 ]
 
-plugin = shared_library('vs_fgs',
+plugin = shared_library('vsfgs',
   vs_fgs_sources,
   include_directories: incdir,
   dependencies: [dav1d_dep],
@@ -25,6 +25,6 @@ plugin = shared_library('vs_fgs',
 )
 
 py.install_sources(
-  'vs_fgs/__init__.py',
-  subdir: 'vs_fgs'
+  'vsfgs/__init__.py',
+  subdir: 'vsfgs'
 )
