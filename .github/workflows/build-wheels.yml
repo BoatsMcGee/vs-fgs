@@ -36,8 +36,8 @@ jobs:
           CIBW_ARCHS_WINDOWS: auto ARM64
           CIBW_BEFORE_ALL_LINUX: "if command -v apk; then apk add nasm; elif command -v dnf; then dnf install -y nasm; elif command -v yum; then yum install -y nasm; else apt-get update && apt-get install -y nasm; fi"
           CIBW_BEFORE_ALL_WINDOWS: "choco install nasm"
-          CIBW_BEFORE_ALL_MACOS: "brew install nasm"
-          CIBW_SKIP: "cp36-* cp37-* cp38-* cp39-* cp310-* cp311-* cp312-* pp*"
+          CIBW_BEFORE_ALL_MACOS: "export HOMEBREW_NO_AUTO_UPDATE=1; export HOMEBREW_NO_REQUIRE_TAP_TRUST=1; brew install nasm"
+          CIBW_SKIP: "cp39-* cp310-* cp311-* cp312-* pp*"
           CIBW_TEST_COMMAND: "python -c \"import vs_fgs\""
           CIBW_TEST_SKIP: "*-*linux_{aarch64,ppc64le,s390x} *-win_arm64 *-macosx_arm64"
 
@@ -63,8 +63,11 @@ jobs:
       - name: Install nasm (needed by meson setup for dav1d)
         run: sudo apt-get update && sudo apt-get install -y nasm
 
+      - name: Install build tool
+        run: python -m pip install build
+
       - name: Build sdist
-        run: pipx run build --sdist
+        run: python -m build --sdist
 
       - name: Upload sdist as artifact
         uses: actions/upload-artifact@v4
