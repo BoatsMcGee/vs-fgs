@@ -6,8 +6,10 @@
 extern "C" {
 #define BITDEPTH 16
 #include "dav1d/headers.h"
+#include "dav1d/picture.h"
 #include "src/filmgrain.h"
-#include "src/fg_apply.h"
+void dav1d_apply_grain_8bpc(const Dav1dFilmGrainDSPContext *const dsp, Dav1dPicture *const out, const Dav1dPicture *const in);
+void dav1d_apply_grain_16bpc(const Dav1dFilmGrainDSPContext *const dsp, Dav1dPicture *const out, const Dav1dPicture *const in);
 }
 #include <vector>
 #include <algorithm>
@@ -17,7 +19,8 @@ struct FGSData {
     VSNode *node;
     const VSVideoInfo *vi;
     std::vector<Dav1dFilmGrainData> fg_data_array;
-    Dav1dFilmGrainDSPContext dsp;
+    Dav1dFilmGrainDSPContext dsp_8bpc;
+    Dav1dFilmGrainDSPContext dsp_16bpc;
     int dynamic_seed;
 };
 
@@ -79,7 +82,11 @@ static const VSFrame *VS_CC vs_fgs_get_frame(int n, int activationReason, void *
         }
         out_pic.frame_hdr = &hdr;
         
-        dav1d_apply_grain_16bpc(&d->dsp, &out_pic, &in_pic);
+        if (d->vi->format.bitsPerSample == 8) {
+            dav1d_apply_grain_8bpc(&d->dsp_8bpc, &out_pic, &in_pic);
+        } else {
+            dav1d_apply_grain_16bpc(&d->dsp_16bpc, &out_pic, &in_pic);
+        }
         
         vsapi->freeFrame(src);
         return dst;
@@ -104,9 +111,9 @@ static void VS_CC vs_fgs_create(const VSMap *in, VSMap *out, void *userData, VSC
     d->vi = vsapi->getVideoInfo(d->node);
     
     if (!vsh::isConstantVideoFormat(d->vi) || 
-        (d->vi->format.colorFamily != cfYUV && d->vi->format.colorFamily != cfGray) ||
-        d->vi->format.bitsPerSample != 10) {
-        vsapi->mapSetError(out, "vsfgs: only constant format 10-bit YUV or Gray is supported.");
+        d->vi->format.colorFamily != cfYUV ||
+        (d->vi->format.bitsPerSample != 8 && d->vi->format.bitsPerSample != 10 && d->vi->format.bitsPerSample != 12)) {
+        vsapi->mapSetError(out, "vsfgs: only constant format 8, 10, or 12-bit YUV is supported.");
         vsapi->freeNode(d->node);
         delete d;
         return;
@@ -139,7 +146,11 @@ static void VS_CC vs_fgs_create(const VSMap *in, VSMap *out, void *userData, VSC
     
     d->dynamic_seed = vsapi->mapGetIntSaturated(in, "dynamic_seed", 0, nullptr);
     
-    dav1d_film_grain_dsp_init_16bpc(&d->dsp);
+    if (d->vi->format.bitsPerSample == 8) {
+        dav1d_film_grain_dsp_init_8bpc(&d->dsp_8bpc);
+    } else {
+        dav1d_film_grain_dsp_init_16bpc(&d->dsp_16bpc);
+    }
     
     VSFilterDependency deps[] = {{d->node, rpStrictSpatial}};
     vsapi->createVideoFilter(out, "FGS", d->vi, vs_fgs_get_frame, vs_fgs_free, fmParallel, deps, 1, d, core);

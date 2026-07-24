@@ -4,7 +4,7 @@ A VapourSynth plugin for applying Film Grain Synthesis (FGS) using the [dav1d](h
 
 Since `dav1d` is widely regarded as the best and fastest AV1 decoder available, its FGS engine is fully spec-compliant with **AFGS1** (AOMedia Film Grain Synthesis 1), guaranteeing highly accurate, performant, and standardized grain generation.
 
-`vs-fgs` parses standard FGS text files and applies film grain to the input clip natively in 10-bit YUV. It also handles automatic dithering/upsampling if the input is not 10-bit.
+`vsfgs` parses standard FGS text files and applies film grain to the input clip natively in **8-bit, 10-bit, or 12-bit YUV**. It also handles automatic dithering/upsampling if the input does not match these formats natively.
 
 ## Installation
 ```bash

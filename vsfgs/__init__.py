@@ -35,13 +35,10 @@ def apply_fgs(
     """
     Applies Film Grain Synthesis (FGS) to a video clip using dav1d's FGS engine implementation.
 
-    This function parses a standard FGS text file format
-    and applies the film grain to the input clip.
+    This function parses a standard FGS text file format and applies the film grain to the input clip.
 
-    The FGS engine strictly operates on 10-bit YUV data (4:2:0, 4:2:2, or 4:4:4).
-    If the input clip is not 10-bit YUV, it will be automatically converted:
-      - Lower bit depths are upsampled.
-      - Higher bit depths are dithered (void) down to 10-bit.
+    The FGS engine strictly operates on 8-bit, 10-bit, or 12-bit YUV data (4:2:0, 4:2:2, or 4:4:4).
+    If the input clip has an unsupported bit depth or is float, it will be temporarily converted to 12-bit (using void dither if > 12-bit). After processing, it will be restored to its original format.
 
     Args:
         clip (vs.VideoNode): The input VapourSynth clip.
@@ -50,16 +47,31 @@ def apply_fgs(
         static (bool): If True, the seed from the FGS table is used for all frames (in a Event, if the FGS is dynamic). If False, the seed rotates using a curated list for each frame.
 
     Returns:
-        vs.VideoNode: The clip with film grain applied (10 bit).
+        vs.VideoNode: The clip with film grain applied (always returned in the same bit depth as the input).
     """
     if not hasattr(core, "fgs") or not hasattr(core.fgs, "FGS"):
         raise RuntimeError("vs_fgs plugin is not loaded correctly")
 
-    if clip.format.color_family not in (vs.YUV, vs.GRAY):
-        clip = clip.resize.Bicubic(format=vs.YUV420P10)
-    elif clip.format.bits_per_sample != 10:
-        target_fmt = clip.format.replace(bits_per_sample=10).id
-        if clip.format.bits_per_sample > 10:
+    if clip.format.color_family != vs.YUV:
+        raise ValueError(
+            "vsfgs: only YUV color family is supported. Please convert your clip to YUV first."
+        )
+
+    original_format = clip.format
+
+    if (
+        original_format.bits_per_sample not in (8, 10, 12)
+        or original_format.sample_type != vs.INTEGER
+    ):
+        target_bits = 12
+        target_fmt = original_format.replace(
+            bits_per_sample=target_bits, sample_type=vs.INTEGER
+        ).id
+
+        if (
+            original_format.bits_per_sample > 12
+            or original_format.sample_type == vs.FLOAT
+        ):
             clip = clip.resize.Bicubic(format=target_fmt, dither_type="none")
         else:
             clip = clip.resize.Bicubic(format=target_fmt)
@@ -175,7 +187,10 @@ def apply_fgs(
     dynamic_seed = 0 if static else 1
     fgs_clip = core.fgs.FGS(clip, fgs_data=fgs_bytes, dynamic_seed=dynamic_seed)
 
-    if ignore_chroma and clip.format.color_family == vs.YUV:
+    if original_format.id != clip.format.id:
+        fgs_clip = fgs_clip.resize.Bicubic(format=original_format.id)
+
+    if ignore_chroma:
         return core.std.ShufflePlanes(
             clips=[fgs_clip, clip, clip], planes=[0, 1, 2], colorfamily=vs.YUV
         )

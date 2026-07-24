@@ -15,25 +15,25 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-13, macos-14]
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+          - os: ubuntu-24.04-arm
+            arch: aarch64
+          - os: windows-latest
+            arch: AMD64
+          - os: macos-latest
+            arch: "x86_64 arm64"
 
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Set up QEMU
-        if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: all
-
       - name: Build wheels
         uses: pypa/cibuildwheel@v4.1.0
         env:
-          CIBW_ARCHS_LINUX: x86_64 aarch64
-          CIBW_ARCHS_MACOS: x86_64 arm64
-          CIBW_ARCHS_WINDOWS: AMD64
+          CIBW_ARCHS: ${{ matrix.arch }}
           CIBW_BEFORE_ALL_LINUX: "if command -v apk; then apk add nasm; elif command -v dnf; then dnf install -y nasm; elif command -v yum; then yum install -y nasm; else apt-get update && apt-get install -y nasm; fi"
           CIBW_BEFORE_ALL_WINDOWS: "choco install nasm"
           CIBW_BEFORE_ALL_MACOS: "export HOMEBREW_NO_AUTO_UPDATE=1; export HOMEBREW_NO_REQUIRE_TAP_TRUST=1; brew install nasm"
@@ -44,7 +44,7 @@ jobs:
       - name: Upload wheels as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+          name: cibw-wheels-${{ matrix.os }}-${{ matrix.arch }}
           path: ./wheelhouse/*.whl
 
   build_sdist:

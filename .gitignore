@@ -36,3 +36,5 @@ subprojects/*/build*/
 build.bat
 /.vsjet
 /typings
+test.vpy
+test.vpy

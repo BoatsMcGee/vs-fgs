@@ -4,8 +4,30 @@ build-backend = "mesonpy"
 
 [project]
 name = "vsfgs"
-version = "0.3.0"
-description = "VapourSynth Film Grain Synthesis Plugin using dav1d"
+version = "0.4.0"
+description = "A VapourSynth plugin for applying Film Grain Synthesis (FGS) using the dav1d engine."
+readme = "README.md"
+license = {text = "MIT"}
+keywords = ["vapoursynth", "film-grain", "fgs", "dav1d", "video-processing", "afgs1", "av1", "simd"]
+
+[project.urls]
+Repository = "https://github.com/PingWer/vs-fgs"
+Issues = "https://github.com/PingWer/vs-fgs/issues"
+
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Multimedia :: Video :: Non-Linear Editor",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: C++",
+    "Programming Language :: Assembly",
+    "Operating System :: OS Independent",
+    "Environment :: Plugins",
+]
 authors = [
     { name = "PingWer74" }
 ]

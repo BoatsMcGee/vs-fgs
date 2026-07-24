@@ -2,8 +2,8 @@ import vapoursynth as vs
 import vsfgs
 from vsview import set_output
 from vssource import FFMS2
-from vsdenoise import bm3d
 from vstools import depth
+from vsdeband import Grainer
 
 core = vs.core
 clip = FFMS2.source(
@@ -11,10 +11,12 @@ clip = FFMS2.source(
 )
 clip = core.resize.Bicubic(clip, format=vs.YUV420P16)
 
-clip_d = bm3d(depth(clip, 32), sigma=3, backend=bm3d.Backend.CUDA_RTC)
+clip_fgs = vsfgs.apply_fgs(depth(clip, 16), "dynamic_fgs_test.txt")
 
-clip_fgs = vsfgs.apply_fgs(depth(clip_d, 10), "dynamic_fgs_test.txt")
+clip_grain = Grainer.GAUSS(
+    clip, strength=(1, 0), static=False, luma_scaling=3, temporal=0.5, planes=0
+)
 
-set_output(clip)
-set_output(clip_d)
+# set_output(clip)
 set_output(clip_fgs)
+# set_output(clip_grain)
