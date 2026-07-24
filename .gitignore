@@ -33,3 +33,6 @@ env/
 
 subprojects/*/build*/
 .ninja_*
+build.bat
+/.vsjet
+/typings

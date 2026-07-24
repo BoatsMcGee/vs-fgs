@@ -9,12 +9,16 @@ extern "C" {
 #include "src/filmgrain.h"
 #include "src/fg_apply.h"
 }
+#include <vector>
+#include <algorithm>
+#include "cherry_seeds.h"
 
 struct FGSData {
     VSNode *node;
     const VSVideoInfo *vi;
-    Dav1dFilmGrainData fg_data;
+    std::vector<Dav1dFilmGrainData> fg_data_array;
     Dav1dFilmGrainDSPContext dsp;
+    int dynamic_seed;
 };
 
 static const VSFrame *VS_CC vs_fgs_get_frame(int n, int activationReason, void *instanceData, void **frameData, VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
@@ -35,31 +39,44 @@ static const VSFrame *VS_CC vs_fgs_get_frame(int n, int activationReason, void *
         in_pic.p.h = d->vi->height;
         in_pic.p.bpc = d->vi->format.bitsPerSample;
         
-        if (d->vi->format.subSamplingW == 1 && d->vi->format.subSamplingH == 1) in_pic.p.layout = DAV1D_PIXEL_LAYOUT_I420;
+        if (d->vi->format.colorFamily == cfGray) in_pic.p.layout = DAV1D_PIXEL_LAYOUT_I400;
+        else if (d->vi->format.subSamplingW == 1 && d->vi->format.subSamplingH == 1) in_pic.p.layout = DAV1D_PIXEL_LAYOUT_I420;
         else if (d->vi->format.subSamplingW == 1 && d->vi->format.subSamplingH == 0) in_pic.p.layout = DAV1D_PIXEL_LAYOUT_I422;
         else if (d->vi->format.subSamplingW == 0 && d->vi->format.subSamplingH == 0) in_pic.p.layout = DAV1D_PIXEL_LAYOUT_I444;
         
         in_pic.data[0] = (void*)vsapi->getReadPtr(src, 0);
-        in_pic.data[1] = (void*)vsapi->getReadPtr(src, 1);
-        in_pic.data[2] = (void*)vsapi->getReadPtr(src, 2);
         in_pic.stride[0] = vsapi->getStride(src, 0);
-        in_pic.stride[1] = vsapi->getStride(src, 1);
+        if (d->vi->format.colorFamily == cfYUV) {
+            in_pic.data[1] = (void*)vsapi->getReadPtr(src, 1);
+            in_pic.data[2] = (void*)vsapi->getReadPtr(src, 2);
+            in_pic.stride[1] = vsapi->getStride(src, 1);
+        }
         
         Dav1dSequenceHeader seq_hdr = {};
         seq_hdr.mtrx = DAV1D_MC_UNKNOWN;
         
         Dav1dFrameHeader hdr = {};
-        hdr.film_grain.data = d->fg_data;
+        
+        size_t idx = std::min((size_t)n, d->fg_data_array.size() - 1);
+        Dav1dFilmGrainData fd = d->fg_data_array[idx];
+        
+        if (d->dynamic_seed) {
+            fd.seed = CHERRY_SEEDS[n % NUM_CHERRY_SEEDS];
+        }
+        
+        hdr.film_grain.data = fd;
         hdr.film_grain.present = 1;
         in_pic.frame_hdr = &hdr;
         in_pic.seq_hdr = &seq_hdr;
         
         out_pic = in_pic;
         out_pic.data[0] = (void*)vsapi->getWritePtr(dst, 0);
-        out_pic.data[1] = (void*)vsapi->getWritePtr(dst, 1);
-        out_pic.data[2] = (void*)vsapi->getWritePtr(dst, 2);
         out_pic.stride[0] = vsapi->getStride(dst, 0);
-        out_pic.stride[1] = vsapi->getStride(dst, 1);
+        if (d->vi->format.colorFamily == cfYUV) {
+            out_pic.data[1] = (void*)vsapi->getWritePtr(dst, 1);
+            out_pic.data[2] = (void*)vsapi->getWritePtr(dst, 2);
+            out_pic.stride[1] = vsapi->getStride(dst, 1);
+        }
         out_pic.frame_hdr = &hdr;
         
         dav1d_apply_grain_16bpc(&d->dsp, &out_pic, &in_pic);
@@ -87,24 +104,40 @@ static void VS_CC vs_fgs_create(const VSMap *in, VSMap *out, void *userData, VSC
     d->vi = vsapi->getVideoInfo(d->node);
     
     if (!vsh::isConstantVideoFormat(d->vi) || 
-        d->vi->format.colorFamily != cfYUV ||
+        (d->vi->format.colorFamily != cfYUV && d->vi->format.colorFamily != cfGray) ||
         d->vi->format.bitsPerSample != 10) {
-        vsapi->mapSetError(out, "vsfgs: only constant format 10-bit YUV is supported. Please resize/dither first.");
+        vsapi->mapSetError(out, "vsfgs: only constant format 10-bit YUV or Gray is supported.");
         vsapi->freeNode(d->node);
         delete d;
         return;
     }
+
+    if (d->vi->format.colorFamily == cfYUV) {
+        if (!((d->vi->format.subSamplingW == 1 && d->vi->format.subSamplingH == 1) ||
+              (d->vi->format.subSamplingW == 1 && d->vi->format.subSamplingH == 0) ||
+              (d->vi->format.subSamplingW == 0 && d->vi->format.subSamplingH == 0))) {
+            vsapi->mapSetError(out, "vsfgs: only 420, 422, and 444 subsampling are supported for YUV.");
+            vsapi->freeNode(d->node);
+            delete d;
+            return;
+        }
+    }
     
     int size = vsapi->mapGetDataSize(in, "fgs_data", 0, nullptr);
-    if (size != sizeof(Dav1dFilmGrainData)) {
+    if (size == 0 || size % sizeof(Dav1dFilmGrainData) != 0) {
         vsapi->mapSetError(out, "vsfgs: fgs_data size mismatch");
         vsapi->freeNode(d->node);
         delete d;
         return;
     }
     
+    int num_items = size / sizeof(Dav1dFilmGrainData);
+    d->fg_data_array.resize(num_items);
+    
     const char *data_ptr = vsapi->mapGetData(in, "fgs_data", 0, nullptr);
-    std::memcpy(&d->fg_data, data_ptr, sizeof(Dav1dFilmGrainData));
+    std::memcpy(d->fg_data_array.data(), data_ptr, size);
+    
+    d->dynamic_seed = vsapi->mapGetIntSaturated(in, "dynamic_seed", 0, nullptr);
     
     dav1d_film_grain_dsp_init_16bpc(&d->dsp);
     
@@ -114,5 +147,5 @@ static void VS_CC vs_fgs_create(const VSMap *in, VSMap *out, void *userData, VSC
 
 VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin *plugin, const VSPLUGINAPI *vspapi) {
     vspapi->configPlugin("com.vs.fgs", "fgs", "Film Grain Synthesis via dav1d", VS_MAKE_VERSION(1, 0), VS_MAKE_VERSION(4, 0), 0, plugin);
-    vspapi->registerFunction("FGS", "clip:vnode;fgs_data:data;", "clip:vnode;", vs_fgs_create, nullptr, plugin);
+    vspapi->registerFunction("FGS", "clip:vnode;fgs_data:data;dynamic_seed:int:opt;", "clip:vnode;", vs_fgs_create, nullptr, plugin);
 }

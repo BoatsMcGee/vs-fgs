@@ -1,6 +1,8 @@
 import ctypes
-import os
 import vapoursynth as vs
+
+core = vs.core
+
 
 class Dav1dFilmGrainData(ctypes.Structure):
     _fields_ = [
@@ -23,81 +25,158 @@ class Dav1dFilmGrainData(ctypes.Structure):
         ("clip_to_restricted_range", ctypes.c_int),
     ]
 
-# Automatically load the compiled plugin
-core = vs.core
-plugin_loaded = False
-for ext in [".dll", ".so", ".dylib"]:
-    plugin_path = os.path.join(os.path.dirname(__file__), "vs_fgs_plugin" + ext)
-    if os.path.exists(plugin_path):
-        core.std.LoadPlugin(plugin_path)
-        plugin_loaded = True
-        break
-        
-# fallback for python extension naming convention like vs_fgs_plugin.cpython-310-x86_64-linux-gnu.so
-if not plugin_loaded:
-    for f in os.listdir(os.path.dirname(__file__)):
-        if f.startswith("vs_fgs_plugin") and (f.endswith(".so") or f.endswith(".pyd") or f.endswith(".dll")):
-            core.std.LoadPlugin(os.path.join(os.path.dirname(__file__), f))
-            plugin_loaded = True
-            break
 
-def apply_fgs(clip: vs.VideoNode, fgs_file_path: str) -> vs.VideoNode:
+def apply_fgs(
+    clip: vs.VideoNode,
+    fgs_file_path: str,
+    ignore_chroma: bool = False,
+    static: bool = False,
+) -> vs.VideoNode:
+    """
+    Applies Film Grain Synthesis (FGS) to a video clip using dav1d's FGS engine implementation.
+
+    This function parses a standard FGS text file format
+    and applies the film grain to the input clip.
+
+    The FGS engine strictly operates on 10-bit YUV data (4:2:0, 4:2:2, or 4:4:4).
+    If the input clip is not 10-bit YUV, it will be automatically converted:
+      - Lower bit depths are upsampled.
+      - Higher bit depths are dithered (void) down to 10-bit.
+
+    Args:
+        clip (vs.VideoNode): The input VapourSynth clip.
+        fgs_file_path (str): The path to the text file containing the FGS parameters.
+        ignore_chroma (bool): If True, grain is only applied to Luma (Chroma is copied).
+        static (bool): If True, the seed from the FGS table is used for all frames (in a Event, if the FGS is dynamic). If False, the seed rotates using a curated list for each frame.
+
+    Returns:
+        vs.VideoNode: The clip with film grain applied (10 bit).
+    """
     if not hasattr(core, "fgs") or not hasattr(core.fgs, "FGS"):
         raise RuntimeError("vs_fgs plugin is not loaded correctly")
 
-    data = Dav1dFilmGrainData()
-    
+    if clip.format.color_family not in (vs.YUV, vs.GRAY):
+        clip = clip.resize.Bicubic(format=vs.YUV420P10)
+    elif clip.format.bits_per_sample != 10:
+        target_fmt = clip.format.replace(bits_per_sample=10).id
+        if clip.format.bits_per_sample > 10:
+            clip = clip.resize.Bicubic(format=target_fmt, dither_type="none")
+        else:
+            clip = clip.resize.Bicubic(format=target_fmt)
+
+    blocks = []
+    current_block = None
+    bare_lines = []
+
     with open(fgs_file_path, "r") as f:
-        lines = f.read().strip().splitlines()
-        
-    for line in lines:
-        parts = line.strip().split()
-        if not parts: continue
-        
-        token = parts[0]
-        if token == "E":
-            data.seed = int(parts[4])
-        elif token == "p":
-            data.ar_coeff_lag = int(parts[1])
-            data.ar_coeff_shift = int(parts[2])
-            data.grain_scale_shift = int(parts[3])
-            data.scaling_shift = int(parts[4])
-            data.chroma_scaling_from_luma = int(parts[5])
-            data.overlap_flag = int(parts[6])
-            data.uv_mult[0] = int(parts[7])
-            data.uv_luma_mult[0] = int(parts[8])
-            data.uv_offset[0] = int(parts[9])
-            data.uv_mult[1] = int(parts[10])
-            data.uv_luma_mult[1] = int(parts[11])
-            data.uv_offset[1] = int(parts[12])
-        elif token == "sY":
-            data.num_y_points = int(parts[1])
-            for i in range(data.num_y_points):
-                data.y_points[i][0] = int(parts[2 + i*2])
-                data.y_points[i][1] = int(parts[3 + i*2])
-        elif token == "sCb":
-            data.num_uv_points[0] = int(parts[1])
-            for i in range(data.num_uv_points[0]):
-                data.uv_points[0][i][0] = int(parts[2 + i*2])
-                data.uv_points[0][i][1] = int(parts[3 + i*2])
-        elif token == "sCr":
-            data.num_uv_points[1] = int(parts[1])
-            for i in range(data.num_uv_points[1]):
-                data.uv_points[1][i][0] = int(parts[2 + i*2])
-                data.uv_points[1][i][1] = int(parts[3 + i*2])
-        elif token == "cY":
-            for i in range(len(parts) - 1):
-                data.ar_coeffs_y[i] = int(parts[1 + i])
-        elif token == "cCb":
-            for i in range(len(parts) - 1):
-                data.ar_coeffs_uv[0][i] = int(parts[1 + i])
-        elif token == "cCr":
-            for i in range(len(parts) - 1):
-                data.ar_coeffs_uv[1][i] = int(parts[1 + i])
-                
-    data.clip_to_restricted_range = 1 # Usually 1 for FGS
-    
-    # Serialize to bytes
-    fgs_bytes = bytes(data)
-    
-    return core.fgs.FGS(clip, fgs_bytes)
+        for line in f:
+            parts = line.strip().split()
+            if not parts:
+                continue
+
+            if parts[0] == "E":
+                current_block = {
+                    "lines": [parts],
+                    "start_time": int(parts[1]),
+                    "end_time": int(parts[2]),
+                }
+                blocks.append(current_block)
+            elif current_block is not None:
+                current_block["lines"].append(parts)
+            elif parts[0] not in ("filmgrn1",):
+                bare_lines.append(parts)
+
+    if not blocks:
+        blocks.append({"lines": bare_lines, "start_time": 0, "end_time": float("inf")})
+
+    parsed_blocks = []
+    for b in blocks:
+        data = Dav1dFilmGrainData()
+        for parts in b["lines"]:
+            token = parts[0]
+            if token == "E":
+                data.seed = int(parts[4])
+            elif token == "p":
+                data.ar_coeff_lag = int(parts[1])
+                data.ar_coeff_shift = int(parts[2])
+                data.grain_scale_shift = int(parts[3])
+                data.scaling_shift = int(parts[4])
+                data.chroma_scaling_from_luma = int(parts[5])
+                data.overlap_flag = int(parts[6])
+                data.uv_mult[0] = int(parts[7])
+                data.uv_luma_mult[0] = int(parts[8])
+                data.uv_offset[0] = int(parts[9])
+                data.uv_mult[1] = int(parts[10])
+                data.uv_luma_mult[1] = int(parts[11])
+                data.uv_offset[1] = int(parts[12])
+            elif token == "sY":
+                data.num_y_points = int(parts[1])
+                for i in range(data.num_y_points):
+                    data.y_points[i][0] = int(parts[2 + i * 2])
+                    data.y_points[i][1] = int(parts[3 + i * 2])
+            elif token == "sCb":
+                data.num_uv_points[0] = int(parts[1])
+                for i in range(data.num_uv_points[0]):
+                    data.uv_points[0][i][0] = int(parts[2 + i * 2])
+                    data.uv_points[0][i][1] = int(parts[3 + i * 2])
+            elif token == "sCr":
+                data.num_uv_points[1] = int(parts[1])
+                for i in range(data.num_uv_points[1]):
+                    data.uv_points[1][i][0] = int(parts[2 + i * 2])
+                    data.uv_points[1][i][1] = int(parts[3 + i * 2])
+            elif token == "cY":
+                for i in range(len(parts) - 1):
+                    data.ar_coeffs_y[i] = int(parts[1 + i])
+            elif token == "cCb":
+                for i in range(len(parts) - 1):
+                    data.ar_coeffs_uv[0][i] = int(parts[1 + i])
+            elif token == "cCr":
+                for i in range(len(parts) - 1):
+                    data.ar_coeffs_uv[1][i] = int(parts[1 + i])
+
+        if ignore_chroma:
+            data.num_uv_points[0] = 0
+            data.num_uv_points[1] = 0
+            data.chroma_scaling_from_luma = 0
+
+        data.clip_to_restricted_range = 1
+
+        parsed_blocks.append(
+            {
+                "data_bytes": bytes(data),
+                "start_time": b["start_time"],
+                "end_time": b["end_time"],
+            }
+        )
+
+    fps_num = clip.fps.numerator
+    fps_den = clip.fps.denominator
+    if fps_num == 0:
+        raise ValueError(
+            "vs_fgs requires a constant framerate clip for dynamic FGS parsing. Please set clip fps."
+        )
+
+    timebase_scale = 10000000.0
+    fgs_structs_bytes = bytearray()
+
+    for n in range(clip.num_frames):
+        frame_time = (n * fps_den * timebase_scale) / fps_num
+
+        active_bytes = parsed_blocks[-1]["data_bytes"]
+        for b in parsed_blocks:
+            if b["start_time"] <= frame_time < b["end_time"]:
+                active_bytes = b["data_bytes"]
+                break
+
+        fgs_structs_bytes.extend(active_bytes)
+
+    fgs_bytes = bytes(fgs_structs_bytes)
+
+    dynamic_seed = 0 if static else 1
+    fgs_clip = core.fgs.FGS(clip, fgs_data=fgs_bytes, dynamic_seed=dynamic_seed)
+
+    if ignore_chroma and clip.format.color_family == vs.YUV:
+        return core.std.ShufflePlanes(
+            clips=[fgs_clip, clip, clip], planes=[0, 1, 2], colorfamily=vs.YUV
+        )
+    return fgs_clip

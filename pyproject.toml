@@ -4,14 +4,14 @@ build-backend = "mesonpy"
 
 [project]
 name = "vs-fgs"
-version = "0.1.0"
+version = "0.3.0"
 description = "VapourSynth Film Grain Synthesis Plugin using dav1d"
 authors = [
-    { name = "Developer" }
+    { name = "PingWer74" }
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.13"
 dependencies = [
-    "vapoursynth"
+    "vapoursynth>=74"
 ]
 
 [project.optional-dependencies]
