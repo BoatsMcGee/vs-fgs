@@ -1,0 +1,21 @@
+[build-system]
+requires = ["meson-python", "ninja", "meson"]
+build-backend = "mesonpy"
+
+[project]
+name = "vs-fgs"
+version = "0.1.0"
+description = "VapourSynth Film Grain Synthesis Plugin using dav1d"
+authors = [
+    { name = "Developer" }
+]
+requires-python = ">=3.8"
+dependencies = [
+    "vapoursynth"
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.meson-python]
+allow-windows-internal-shared-libs = true
