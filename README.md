@@ -4,11 +4,11 @@ A VapourSynth plugin for applying Film Grain Synthesis (FGS) using the [dav1d](h
 
 Since `dav1d` is widely regarded as the best and fastest AV1 decoder available, its FGS engine is fully spec-compliant with **AFGS1** (AOMedia Film Grain Synthesis 1), guaranteeing highly accurate, performant, and standardized grain generation.
 
-`vsfgs` parses standard FGS text files and applies film grain to the input clip natively in **8-bit, 10-bit, or 12-bit YUV**. It also handles automatic dithering/upsampling if the input does not match these formats natively.
+`vsfgs` parses standard FGS text files and applies film grain to the input clip natively in **8-bit, 10-bit, or 12-bit YUV**. It also handles automatic dithering if the input bit depth is higher.
 
 ## Installation
 ```bash
-pip install vs-fgs
+pip install vsfgs
 ```
 
 ## Usage
@@ -29,6 +29,33 @@ clip = vsfgs.apply_fgs(clip, "grain_table.txt", ignore_chroma=False, static=Fals
 
 clip.set_output()
 ```
+
+## Advanced Customization
+
+`vsfgs` allows for extreme and advanced customization of the film grain pattern. The logic for synthesizing grain relies on a detailed parameter table.
+For an advanced visual editor to fine-tune these parameters and for more details on the grain configuration, please refer to the **FGSEditor** wiki:
+[https://github.com/PingWer/FGSEditor](https://github.com/PingWer/FGSEditor)
+
+## Performance & Compatibility
+
+`vsfgs` uses `dav1d`'s hand-written Assembly instructions (AVX-512, AVX2, SSSE3), resulting in extremely high throughput with almost zero overhead.
+
+**Platform Support:**
+
+| OS | Architecture | Supported | Tested |
+| :--- | :--- | :---: | :---: |
+| **Windows** | x86_64, ARM64 | ✅ | ✅ |
+| **Linux** | x86_64, aarch64 | ✅ | ❌ |
+| **macOS** | x86_64, Apple Silicon | ✅ | ❌ |
+
+**Benchmark Comparison** *(1080p 16-bit inputs, FPS)*:
+Tests performed using a real MKV source via `vsbestsource` to measure the raw decoding speed, comparing the overhead of `vsfgs` against `Grainer.GAUSS` (from `vsjetpack`).
+
+| Format | Indexer Only | `vsfgs` (AVX-512) | `Grainer.GAUSS` |
+| --- | --- | --- | --- |
+| **YUV420P16** | ~909 FPS | **~425 FPS** | ~327 FPS |
+| **YUV422P16** | - | **~400 FPS** | ~320 FPS |
+| **YUV444P16** | - | **~318 FPS** | ~318 FPS |
 
 ## Building from Source
 

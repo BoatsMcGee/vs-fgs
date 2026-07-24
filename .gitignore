@@ -31,6 +31,12 @@ env/
 
 .DS_Store
 
+test.vpy
+dynamic_fgs_test.txt
+bench_tmp.vpy
+bench_results.json
+bench_runner.py
+
 subprojects/*/build*/
 .ninja_*
 build.bat

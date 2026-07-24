@@ -44,7 +44,7 @@ def apply_fgs(
         clip (vs.VideoNode): The input VapourSynth clip.
         fgs_file_path (str): The path to the text file containing the FGS parameters.
         ignore_chroma (bool): If True, grain is only applied to Luma (Chroma is copied).
-        static (bool): If True, the seed from the FGS table is used for all frames (in a Event, if the FGS is dynamic). If False, the seed rotates using a curated list for each frame.
+        static (bool): If True, the seed from the FGS table is used for all frames (if the FGS is dynamic, this behaviour is per Event). If False, the seed rotates using a curated list for each frame.
 
     Returns:
         vs.VideoNode: The clip with film grain applied (always returned in the same bit depth as the input).
@@ -102,56 +102,69 @@ def apply_fgs(
         blocks.append({"lines": bare_lines, "start_time": 0, "end_time": float("inf")})
 
     parsed_blocks = []
-    for b in blocks:
+    required_tokens = {"p", "sY", "sCb", "sCr", "cY", "cCb", "cCr"}
+
+    for b_idx, b in enumerate(blocks):
         data = Dav1dFilmGrainData()
-        for parts in b["lines"]:
-            token = parts[0]
-            if token == "E":
-                data.seed = int(parts[4])
-            elif token == "p":
-                data.ar_coeff_lag = int(parts[1])
-                data.ar_coeff_shift = int(parts[2])
-                data.grain_scale_shift = int(parts[3])
-                data.scaling_shift = int(parts[4])
-                data.chroma_scaling_from_luma = int(parts[5])
-                data.overlap_flag = int(parts[6])
-                data.uv_mult[0] = int(parts[7])
-                data.uv_luma_mult[0] = int(parts[8])
-                data.uv_offset[0] = int(parts[9])
-                data.uv_mult[1] = int(parts[10])
-                data.uv_luma_mult[1] = int(parts[11])
-                data.uv_offset[1] = int(parts[12])
-            elif token == "sY":
-                data.num_y_points = int(parts[1])
-                for i in range(data.num_y_points):
-                    data.y_points[i][0] = int(parts[2 + i * 2])
-                    data.y_points[i][1] = int(parts[3 + i * 2])
-            elif token == "sCb":
-                data.num_uv_points[0] = int(parts[1])
-                for i in range(data.num_uv_points[0]):
-                    data.uv_points[0][i][0] = int(parts[2 + i * 2])
-                    data.uv_points[0][i][1] = int(parts[3 + i * 2])
-            elif token == "sCr":
-                data.num_uv_points[1] = int(parts[1])
-                for i in range(data.num_uv_points[1]):
-                    data.uv_points[1][i][0] = int(parts[2 + i * 2])
-                    data.uv_points[1][i][1] = int(parts[3 + i * 2])
-            elif token == "cY":
-                for i in range(len(parts) - 1):
-                    data.ar_coeffs_y[i] = int(parts[1 + i])
-            elif token == "cCb":
-                for i in range(len(parts) - 1):
-                    data.ar_coeffs_uv[0][i] = int(parts[1 + i])
-            elif token == "cCr":
-                for i in range(len(parts) - 1):
-                    data.ar_coeffs_uv[1][i] = int(parts[1 + i])
+        found_tokens = set()
 
-        if ignore_chroma:
-            data.num_uv_points[0] = 0
-            data.num_uv_points[1] = 0
-            data.chroma_scaling_from_luma = 0
+        try:
+            for parts in b["lines"]:
+                token = parts[0]
+                found_tokens.add(token)
+                if token == "E":
+                    data.seed = int(parts[4])
+                elif token == "p":
+                    data.ar_coeff_lag = int(parts[1])
+                    data.ar_coeff_shift = int(parts[2])
+                    data.grain_scale_shift = int(parts[3])
+                    data.scaling_shift = int(parts[4])
+                    data.chroma_scaling_from_luma = int(parts[5])
+                    data.overlap_flag = int(parts[6])
+                    data.uv_mult[0] = int(parts[7])
+                    data.uv_luma_mult[0] = int(parts[8])
+                    data.uv_offset[0] = int(parts[9])
+                    data.uv_mult[1] = int(parts[10])
+                    data.uv_luma_mult[1] = int(parts[11])
+                    data.uv_offset[1] = int(parts[12])
+                elif token == "sY":
+                    data.num_y_points = int(parts[1])
+                    for i in range(data.num_y_points):
+                        data.y_points[i][0] = int(parts[2 + i * 2])
+                        data.y_points[i][1] = int(parts[3 + i * 2])
+                elif token == "sCb":
+                    data.num_uv_points[0] = int(parts[1])
+                    for i in range(data.num_uv_points[0]):
+                        data.uv_points[0][i][0] = int(parts[2 + i * 2])
+                        data.uv_points[0][i][1] = int(parts[3 + i * 2])
+                elif token == "sCr":
+                    data.num_uv_points[1] = int(parts[1])
+                    for i in range(data.num_uv_points[1]):
+                        data.uv_points[1][i][0] = int(parts[2 + i * 2])
+                        data.uv_points[1][i][1] = int(parts[3 + i * 2])
+                elif token == "cY":
+                    for i in range(len(parts) - 1):
+                        data.ar_coeffs_y[i] = int(parts[1 + i])
+                elif token == "cCb":
+                    for i in range(len(parts) - 1):
+                        data.ar_coeffs_uv[0][i] = int(parts[1 + i])
+                elif token == "cCr":
+                    for i in range(len(parts) - 1):
+                        data.ar_coeffs_uv[1][i] = int(parts[1 + i])
+        except (IndexError, ValueError) as e:
+            raise ValueError(
+                f"vsfgs: malformed parameters in FGS file at Event {b_idx + 1}, line: {' '.join(parts)}"
+            ) from e
 
-        data.clip_to_restricted_range = 1
+        missing_tokens = required_tokens - found_tokens
+        if missing_tokens:
+            raise ValueError(
+                f"vsfgs: missing required FGS fields {missing_tokens} in Event {b_idx + 1}"
+            )
+
+        data.clip_to_restricted_range = (
+            1  # Could be exposed in the signature in the future
+        )
 
         parsed_blocks.append(
             {
@@ -171,14 +184,21 @@ def apply_fgs(
     timebase_scale = 10000000.0
     fgs_structs_bytes = bytearray()
 
+    import bisect
+
+    start_times = [b["start_time"] for b in parsed_blocks]
+
     for n in range(clip.num_frames):
         frame_time = (n * fps_den * timebase_scale) / fps_num
 
-        active_bytes = parsed_blocks[-1]["data_bytes"]
-        for b in parsed_blocks:
-            if b["start_time"] <= frame_time < b["end_time"]:
-                active_bytes = b["data_bytes"]
-                break
+        idx = bisect.bisect_right(start_times, frame_time) - 1
+        if idx >= 0:
+            if frame_time < parsed_blocks[idx]["end_time"]:
+                active_bytes = parsed_blocks[idx]["data_bytes"]
+            else:
+                active_bytes = parsed_blocks[-1]["data_bytes"]
+        else:
+            active_bytes = parsed_blocks[0]["data_bytes"]
 
         fgs_structs_bytes.extend(active_bytes)
 
@@ -187,6 +207,8 @@ def apply_fgs(
     dynamic_seed = 0 if static else 1
     fgs_clip = core.fgs.FGS(clip, fgs_data=fgs_bytes, dynamic_seed=dynamic_seed)
 
+    if original_format.id != clip.format.id:
+        fgs_clip = fgs_clip.resize.Bicubic(format=original_format.id)
     if original_format.id != clip.format.id:
         fgs_clip = fgs_clip.resize.Bicubic(format=original_format.id)
 
