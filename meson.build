@@ -6,10 +6,6 @@ project('vsfgs', ['c', 'cpp'],
 # Statically link all MinGW runtime libraries on Windows to avoid
 # dependencies on libgcc_s_seh-1.dll, libstdc++-6.dll, and
 # libwinpthread-1.dll which are not present on end-user machines.
-if host_machine.system() == 'windows' and meson.get_compiler('c').get_id() == 'gcc'
-  add_project_link_arguments('-static-libgcc', language: 'c')
-  add_project_link_arguments('-static-libgcc', '-static-libstdc++', language: 'cpp')
-endif
 
 py = import('python').find_installation(pure: false)
 
@@ -25,7 +21,7 @@ vs_fgs_sources = [
 
 mingw_static_libs = []
 if host_machine.system() == 'windows' and meson.get_compiler('c').get_id() == 'gcc'
-  mingw_static_libs = ['-l:libwinpthread.a']
+  mingw_static_libs = ['-static-libgcc', '-static-libstdc++', '-l:libwinpthread.a']
 endif
 
 plugin = shared_library('vsfgs',
