@@ -9,8 +9,6 @@ project('vsfgs', ['c', 'cpp'],
 if host_machine.system() == 'windows' and meson.get_compiler('c').get_id() == 'gcc'
   add_project_link_arguments('-static-libgcc', language: 'c')
   add_project_link_arguments('-static-libgcc', '-static-libstdc++', language: 'cpp')
-  add_project_link_arguments('-Wl,-Bstatic', '-lwinpthread', '-Wl,-Bdynamic', language: 'c')
-  add_project_link_arguments('-Wl,-Bstatic', '-lwinpthread', '-Wl,-Bdynamic', language: 'cpp')
 endif
 
 py = import('python').find_installation(pure: false)
@@ -25,10 +23,16 @@ vs_fgs_sources = [
   'src/vs_fgs.cpp'
 ]
 
+mingw_static_pthread = []
+if host_machine.system() == 'windows' and meson.get_compiler('c').get_id() == 'gcc'
+  mingw_static_pthread = ['-Wl,-Bstatic', '-lwinpthread', '-Wl,-Bdynamic']
+endif
+
 plugin = shared_library('vsfgs',
   vs_fgs_sources,
   include_directories: incdir,
   dependencies: [dav1d_dep],
+  link_args: mingw_static_pthread,
   name_prefix: '',
   install: true,
   install_dir: py.get_install_dir(pure: false, subdir: 'vapoursynth/plugins')
