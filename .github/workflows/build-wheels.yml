@@ -30,13 +30,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Ensure MSVC is used on Windows (remove Strawberry Perl MinGW from PATH)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $cleanPath = ($env:PATH.Split(';') | Where-Object { $_ -notlike '*Strawberry*' }) -join ';'
-          "PATH=$cleanPath" | Out-File -FilePath $env:GITHUB_ENV -Append
-
       - name: Build wheels
         uses: pypa/cibuildwheel@v4.1.0
         env:
