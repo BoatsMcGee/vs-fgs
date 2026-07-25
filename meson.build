@@ -3,12 +3,14 @@ project('vsfgs', ['c', 'cpp'],
   default_options: ['cpp_std=c++17', 'c_std=c99', 'buildtype=release']
 )
 
-# Statically link GCC/libstdc++ runtimes on Windows (MinGW) to avoid
-# dependencies on libstdc++-6.dll and libgcc_s_seh-1.dll which are
-# not present on end-user machines.
+# Statically link all MinGW runtime libraries on Windows to avoid
+# dependencies on libgcc_s_seh-1.dll, libstdc++-6.dll, and
+# libwinpthread-1.dll which are not present on end-user machines.
 if host_machine.system() == 'windows' and meson.get_compiler('c').get_id() == 'gcc'
   add_project_link_arguments('-static-libgcc', language: 'c')
   add_project_link_arguments('-static-libgcc', '-static-libstdc++', language: 'cpp')
+  add_project_link_arguments('-Wl,-Bstatic', '-lwinpthread', '-Wl,-Bdynamic', language: 'c')
+  add_project_link_arguments('-Wl,-Bstatic', '-lwinpthread', '-Wl,-Bdynamic', language: 'cpp')
 endif
 
 py = import('python').find_installation(pure: false)
