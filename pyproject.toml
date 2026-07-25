@@ -43,5 +43,4 @@ Issues = "https://github.com/PingWer/vs-fgs/issues"
 allow-windows-internal-shared-libs = true
 
 [tool.meson-python.args]
-setup = ["--default-library=static", "--vsenv"]
-install = ["--skip-subprojects"]
+setup = ["--vsenv"]
