@@ -31,6 +31,7 @@ def apply_fgs(
     fgs_file_path: str,
     ignore_chroma: bool = False,
     static: bool = False,
+    simd: str | int = "auto",
 ) -> vs.VideoNode:
     """
     Applies Film Grain Synthesis (FGS) to a video clip using dav1d's FGS engine implementation.
@@ -45,6 +46,7 @@ def apply_fgs(
         fgs_file_path (str): The path to the text file containing the FGS parameters.
         ignore_chroma (bool): If True, grain is only applied to Luma (Chroma is copied).
         static (bool): If True, the seed from the FGS table is used for all frames (if the FGS is dynamic, this behaviour is per Event). If False, the seed rotates using a curated list for each frame.
+        simd (str | int): SIMD instruction set to use ('auto', 'avx512', 'avx2', 'sse41', 'sse3', 'sse2', 'none'/'c', or an integer bitmask). Defaults to 'auto' (hardware auto-detection).
 
     Returns:
         vs.VideoNode: The clip with film grain applied (always returned in the same bit depth as the input).
@@ -205,10 +207,35 @@ def apply_fgs(
     fgs_bytes = bytes(fgs_structs_bytes)
 
     dynamic_seed = 0 if static else 1
-    fgs_clip = core.fgs.FGS(clip, fgs_data=fgs_bytes, dynamic_seed=dynamic_seed)
+    
+    simd_mask = -1
+    if isinstance(simd, str):
+        s = simd.strip().lower()
+        if s == "auto":
+            simd_mask = -1
+        elif s in ("none", "c"):
+            simd_mask = 0
+        elif s == "sse2":
+            simd_mask = 1 << 0
+        elif s in ("ssse3", "sse3"):
+            simd_mask = (1 << 0) | (1 << 1)
+        elif s in ("sse4.1", "sse41", "sse4"):
+            simd_mask = (1 << 0) | (1 << 1) | (1 << 2)
+        elif s in ("avx2", "avx"):
+            simd_mask = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3)
+        elif s in ("avx512", "avx-512", "avx512icl"):
+            simd_mask = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4)
+        else:
+            raise ValueError(
+                f"vsfgs: invalid simd architecture '{simd}'. Supported values: 'auto', 'none', 'sse2', 'sse3', 'sse41', 'avx2', 'avx512'."
+            )
+    elif isinstance(simd, int):
+        simd_mask = simd
+    else:
+        raise TypeError("vsfgs: simd parameter must be a string or an integer bitmask.")
 
-    if original_format.id != clip.format.id:
-        fgs_clip = fgs_clip.resize.Bicubic(format=original_format.id)
+    fgs_clip = core.fgs.FGS(clip, fgs_data=fgs_bytes, dynamic_seed=dynamic_seed, simd_mask=simd_mask)
+
     if original_format.id != clip.format.id:
         fgs_clip = fgs_clip.resize.Bicubic(format=original_format.id)
 

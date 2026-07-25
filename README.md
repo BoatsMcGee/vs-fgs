@@ -24,11 +24,17 @@ clip = core.lsmas.LWLibavSource("source.mkv")
 
 # 2. Apply Film Grain
 # - ignore_chroma: If True, grain is only applied to Luma (Chroma is copied).
-# - static: If True, uses the seed from the FGS table for all frames. If False, rotates the seed for each frame.
-clip = vsfgs.apply_fgs(clip, "grain_table.txt", ignore_chroma=False, static=False)
+# - static: If True, uses the seed from the FGS table for all frames (if dynamic FGS, per event). If False, rotates the seed for each frame.
+# - simd: Hardware SIMD architecture ('auto', 'avx512', 'avx2', 'sse41', 'sse3', 'sse2', or 'none'/'c' for plain C). Defaults to 'auto'.
+clip = vsfgs.apply_fgs(clip, "grain_table.txt", ignore_chroma=False, static=False, simd="auto")
 
 clip.set_output()
 ```
+
+### Frame Properties
+
+For each processed frame, `vsfgs` outputs the exact seed integer used during synthesis into the VapourSynth frame properties map: **`FGS_Seed`**
+
 
 ## Advanced Customization
 
@@ -38,7 +44,7 @@ For an advanced visual editor to fine-tune these parameters and for more details
 
 ## Performance & Compatibility
 
-`vsfgs` uses `dav1d`'s hand-written Assembly instructions (AVX-512, AVX2, SSSE3), resulting in extremely high throughput with almost zero overhead.
+`vsfgs` uses `dav1d`'s hand-written Assembly instructions (AVX-512, AVX2, SSE3 ...), resulting in extremely high throughput with almost zero overhead.
 
 **Platform Support:**
 
@@ -48,14 +54,14 @@ For an advanced visual editor to fine-tune these parameters and for more details
 | **Linux** | x86_64, aarch64 | ✅ | ❌ |
 | **macOS** | x86_64, Apple Silicon | ✅ | ❌ |
 
-**Benchmark Comparison** *(1080p 16-bit inputs, FPS)*:
-Tests performed using a real MKV source via `vsbestsource` to measure the raw decoding speed, comparing the overhead of `vsfgs` against `Grainer.GAUSS` (from `vsjetpack`).
+**Benchmark Comparison** *(2,000 frames of real 1080p source via `BestSource`)*:
+Tests measure clean frame throughput and processor scaling across native chroma sub-samplings, comparing `vsfgs` against `Grainer.GAUSS` (from `vsdeband`). It also demonstrates the speedup of `dav1d`'s hardware SIMD Assembly optimizations over unvectorized reference C code (`simd='none'`).
 
-| Format | Indexer Only | `vsfgs` (AVX-512) | `Grainer.GAUSS` |
-| --- | --- | --- | --- |
-| **YUV420P16** | ~909 FPS | **~425 FPS** | ~327 FPS |
-| **YUV422P16** | - | **~400 FPS** | ~320 FPS |
-| **YUV444P16** | - | **~318 FPS** | ~318 FPS |
+| Format | Baseline (BestSource + 16b) | `vsfgs` (SIMD: Auto / AVX-512) | `vsfgs` (SIMD: None / Plain C) | `Grainer.GAUSS` (`vsdeband`) |
+| --- | --- | --- | --- | --- |
+| **YUV420P16** | ~1140 FPS | **~541 FPS** | ~503 FPS | ~344 FPS |
+| **YUV422P16** | ~765 FPS | **~444 FPS** | ~424 FPS | ~313 FPS |
+| **YUV444P16** | ~624 FPS | **~305 FPS** | ~298 FPS | ~276 FPS |
 
 ## Building from Source
 
@@ -75,7 +81,7 @@ To compile the plugin manually, you must have a working C++ toolchain and Meson 
 
 1. Clone the repository recursively to fetch the `dav1d` submodule:
    ```bash
-   git clone --recursive https://github.com/your-username/vs-fgs.git
+   git clone --recursive https://github.com/PingWer/vs-fgs.git
    cd vs-fgs
    ```
 
@@ -83,7 +89,6 @@ To compile the plugin manually, you must have a working C++ toolchain and Meson 
    ```bash
    pip install .
    ```
-   Upon a successful build, the compiled DLL/SO/DYLIB will be placed in your `site-packages/vapoursynth/plugins` folder, ready for automatic discovery by VapourSynth.
 
 ### Standalone Build (Without Python Installation)
 

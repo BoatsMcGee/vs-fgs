@@ -8,6 +8,7 @@ extern "C" {
 #include "dav1d/headers.h"
 #include "dav1d/picture.h"
 #include "src/filmgrain.h"
+#include "src/cpu.h"
 void dav1d_apply_grain_8bpc(const Dav1dFilmGrainDSPContext *const dsp, Dav1dPicture *const out, const Dav1dPicture *const in);
 void dav1d_apply_grain_16bpc(const Dav1dFilmGrainDSPContext *const dsp, Dav1dPicture *const out, const Dav1dPicture *const in);
 }
@@ -67,6 +68,9 @@ static const VSFrame *VS_CC vs_fgs_get_frame(int n, int activationReason, void *
             fd.seed = CHERRY_SEEDS[n % NUM_CHERRY_SEEDS];
         }
         
+        VSMap *props = vsapi->getFramePropertiesRW(dst);
+        vsapi->mapSetInt(props, "FGS_Seed", fd.seed, maReplace);
+
         hdr.film_grain.data = fd;
         hdr.film_grain.present = 1;
         in_pic.frame_hdr = &hdr;
@@ -146,6 +150,13 @@ static void VS_CC vs_fgs_create(const VSMap *in, VSMap *out, void *userData, VSC
     
     d->dynamic_seed = vsapi->mapGetIntSaturated(in, "dynamic_seed", 0, nullptr);
     
+    int err = 0;
+    int64_t simd_mask_val = vsapi->mapGetInt(in, "simd_mask", 0, &err);
+    unsigned simd_mask = (err || simd_mask_val < 0) ? ~0U : (unsigned)simd_mask_val;
+
+    dav1d_init_cpu();
+    dav1d_set_cpu_flags_mask(simd_mask);
+    
     if (d->vi->format.bitsPerSample == 8) {
         dav1d_film_grain_dsp_init_8bpc(&d->dsp_8bpc);
     } else {
@@ -157,6 +168,7 @@ static void VS_CC vs_fgs_create(const VSMap *in, VSMap *out, void *userData, VSC
 }
 
 VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin *plugin, const VSPLUGINAPI *vspapi) {
+    dav1d_init_cpu();
     vspapi->configPlugin("com.vs.fgs", "fgs", "Film Grain Synthesis via dav1d", VS_MAKE_VERSION(1, 0), VS_MAKE_VERSION(4, 0), 0, plugin);
-    vspapi->registerFunction("FGS", "clip:vnode;fgs_data:data;dynamic_seed:int:opt;", "clip:vnode;", vs_fgs_create, nullptr, plugin);
+    vspapi->registerFunction("FGS", "clip:vnode;fgs_data:data;dynamic_seed:int:opt;simd_mask:int:opt;", "clip:vnode;", vs_fgs_create, nullptr, plugin);
 }
