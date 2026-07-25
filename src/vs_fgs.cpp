@@ -22,6 +22,10 @@ struct FGSData {
     std::vector<Dav1dFilmGrainData> fg_data_array;
     Dav1dFilmGrainDSPContext dsp_8bpc;
     Dav1dFilmGrainDSPContext dsp_16bpc;
+    Dav1dPictureParameters pic_params;
+    Dav1dSequenceHeader seq_hdr;
+    bool is_8bpc;
+    bool is_yuv;
     int dynamic_seed;
 };
 
@@ -39,25 +43,15 @@ static const VSFrame *VS_CC vs_fgs_get_frame(int n, int activationReason, void *
         Dav1dPicture in_pic = {};
         Dav1dPicture out_pic = {};
         
-        in_pic.p.w = d->vi->width;
-        in_pic.p.h = d->vi->height;
-        in_pic.p.bpc = d->vi->format.bitsPerSample;
-        
-        if (d->vi->format.colorFamily == cfGray) in_pic.p.layout = DAV1D_PIXEL_LAYOUT_I400;
-        else if (d->vi->format.subSamplingW == 1 && d->vi->format.subSamplingH == 1) in_pic.p.layout = DAV1D_PIXEL_LAYOUT_I420;
-        else if (d->vi->format.subSamplingW == 1 && d->vi->format.subSamplingH == 0) in_pic.p.layout = DAV1D_PIXEL_LAYOUT_I422;
-        else if (d->vi->format.subSamplingW == 0 && d->vi->format.subSamplingH == 0) in_pic.p.layout = DAV1D_PIXEL_LAYOUT_I444;
+        in_pic.p = d->pic_params;
         
         in_pic.data[0] = (void*)vsapi->getReadPtr(src, 0);
         in_pic.stride[0] = vsapi->getStride(src, 0);
-        if (d->vi->format.colorFamily == cfYUV) {
+        if (d->is_yuv) {
             in_pic.data[1] = (void*)vsapi->getReadPtr(src, 1);
             in_pic.data[2] = (void*)vsapi->getReadPtr(src, 2);
             in_pic.stride[1] = vsapi->getStride(src, 1);
         }
-        
-        Dav1dSequenceHeader seq_hdr = {};
-        seq_hdr.mtrx = DAV1D_MC_UNKNOWN;
         
         Dav1dFrameHeader hdr = {};
         
@@ -74,19 +68,19 @@ static const VSFrame *VS_CC vs_fgs_get_frame(int n, int activationReason, void *
         hdr.film_grain.data = fd;
         hdr.film_grain.present = 1;
         in_pic.frame_hdr = &hdr;
-        in_pic.seq_hdr = &seq_hdr;
+        in_pic.seq_hdr = &d->seq_hdr;
         
         out_pic = in_pic;
         out_pic.data[0] = (void*)vsapi->getWritePtr(dst, 0);
         out_pic.stride[0] = vsapi->getStride(dst, 0);
-        if (d->vi->format.colorFamily == cfYUV) {
+        if (d->is_yuv) {
             out_pic.data[1] = (void*)vsapi->getWritePtr(dst, 1);
             out_pic.data[2] = (void*)vsapi->getWritePtr(dst, 2);
             out_pic.stride[1] = vsapi->getStride(dst, 1);
         }
         out_pic.frame_hdr = &hdr;
         
-        if (d->vi->format.bitsPerSample == 8) {
+        if (d->is_8bpc) {
             dav1d_apply_grain_8bpc(&d->dsp_8bpc, &out_pic, &in_pic);
         } else {
             dav1d_apply_grain_16bpc(&d->dsp_16bpc, &out_pic, &in_pic);
@@ -157,7 +151,20 @@ static void VS_CC vs_fgs_create(const VSMap *in, VSMap *out, void *userData, VSC
     dav1d_init_cpu();
     dav1d_set_cpu_flags_mask(simd_mask);
     
-    if (d->vi->format.bitsPerSample == 8) {
+    d->is_8bpc = (d->vi->format.bitsPerSample == 8);
+    d->is_yuv = (d->vi->format.colorFamily == cfYUV);
+    
+    d->pic_params.w = d->vi->width;
+    d->pic_params.h = d->vi->height;
+    d->pic_params.bpc = d->vi->format.bitsPerSample;
+    if (d->vi->format.colorFamily == cfGray) d->pic_params.layout = DAV1D_PIXEL_LAYOUT_I400;
+    else if (d->vi->format.subSamplingW == 1 && d->vi->format.subSamplingH == 1) d->pic_params.layout = DAV1D_PIXEL_LAYOUT_I420;
+    else if (d->vi->format.subSamplingW == 1 && d->vi->format.subSamplingH == 0) d->pic_params.layout = DAV1D_PIXEL_LAYOUT_I422;
+    else if (d->vi->format.subSamplingW == 0 && d->vi->format.subSamplingH == 0) d->pic_params.layout = DAV1D_PIXEL_LAYOUT_I444;
+    
+    d->seq_hdr.mtrx = DAV1D_MC_UNKNOWN;
+
+    if (d->is_8bpc) {
         dav1d_film_grain_dsp_init_8bpc(&d->dsp_8bpc);
     } else {
         dav1d_film_grain_dsp_init_16bpc(&d->dsp_16bpc);

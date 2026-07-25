@@ -59,9 +59,9 @@ Tests measure clean frame throughput and processor scaling across native chroma 
 
 | Format | Baseline (BestSource + 16b) | `vsfgs` (SIMD: Auto / AVX-512) | `vsfgs` (SIMD: None / Plain C) | `Grainer.GAUSS` (`vsdeband`) |
 | --- | --- | --- | --- | --- |
-| **YUV420P16** | ~1140 FPS | **~541 FPS** | ~503 FPS | ~344 FPS |
-| **YUV422P16** | ~765 FPS | **~444 FPS** | ~424 FPS | ~313 FPS |
-| **YUV444P16** | ~624 FPS | **~305 FPS** | ~298 FPS | ~276 FPS |
+| **YUV420P16** | ~1128 FPS | **~557 FPS** | ~514 FPS | ~347 FPS |
+| **YUV422P16** | ~866 FPS | **~434 FPS** | ~425 FPS | ~322 FPS |
+| **YUV444P16** | ~649 FPS | **~305 FPS** | ~299 FPS | ~279 FPS |
 
 ## Building from Source
 
