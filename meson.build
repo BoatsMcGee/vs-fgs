@@ -3,6 +3,8 @@ project('vsfgs', ['c', 'cpp'],
   default_options: ['cpp_std=c++17', 'c_std=c99', 'buildtype=release']
 )
 
+add_project_link_arguments('-static-libstdc++', language: 'cpp')
+
 py = import('python').find_installation(pure: false)
 
 dav1d_proj = subproject('dav1d', default_options: ['default_library=static', 'enable_tools=false', 'enable_tests=false', 'bitdepths=8,16'])
