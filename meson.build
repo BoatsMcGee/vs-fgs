@@ -3,10 +3,6 @@ project('vsfgs', ['c', 'cpp'],
   default_options: ['cpp_std=c++17', 'c_std=c99', 'buildtype=release']
 )
 
-# Statically link all MinGW runtime libraries on Windows to avoid
-# dependencies on libgcc_s_seh-1.dll, libstdc++-6.dll, and
-# libwinpthread-1.dll which are not present on end-user machines.
-
 py = import('python').find_installation(pure: false)
 
 dav1d_proj = subproject('dav1d', default_options: ['default_library=static', 'enable_tools=false', 'enable_tests=false', 'bitdepths=8,16'])
@@ -19,16 +15,10 @@ vs_fgs_sources = [
   'src/vs_fgs.cpp'
 ]
 
-mingw_static_libs = []
-if host_machine.system() == 'windows' and meson.get_compiler('c').get_id() == 'gcc'
-  mingw_static_libs = ['-static-libgcc', '-static-libstdc++', '-l:libwinpthread.a']
-endif
-
 plugin = shared_library('vsfgs',
   vs_fgs_sources,
   include_directories: incdir,
   dependencies: [dav1d_dep],
-  link_args: mingw_static_libs,
   name_prefix: '',
   install: true,
   install_dir: py.get_install_dir(pure: false, subdir: 'vapoursynth/plugins')
