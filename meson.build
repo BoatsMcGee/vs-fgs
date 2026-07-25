@@ -6,18 +6,9 @@ project('vsfgs', ['c', 'cpp'],
 # Statically link GCC/libstdc++ runtimes on Windows (MinGW) to avoid
 # dependencies on libstdc++-6.dll and libgcc_s_seh-1.dll which are
 # not present on end-user machines.
-if host_machine.system() == 'windows'
-  cpp = meson.get_compiler('cpp')
-  if cpp.get_id() == 'gcc'
-    foreach lang : ['c', 'cpp']
-      if cpp.has_link_argument('-static-libgcc')
-        add_project_link_arguments('-static-libgcc', language: lang)
-      endif
-    endforeach
-    if cpp.has_link_argument('-static-libstdc++')
-      add_project_link_arguments('-static-libstdc++', language: 'cpp')
-    endif
-  endif
+if host_machine.system() == 'windows' and meson.get_compiler('c').get_id() == 'gcc'
+  add_project_link_arguments('-static-libgcc', language: 'c')
+  add_project_link_arguments('-static-libgcc', '-static-libstdc++', language: 'cpp')
 endif
 
 py = import('python').find_installation(pure: false)
